@@ -31,148 +31,144 @@ enum class CFGAnnotation {
   Return
 };
 
-class StatementLike {};
-
-/// A Part is the variant of parser objects that a Evaluation points to
-using Part = std::variant<const parser::AllocateStmt *,
-    const parser::AssignmentStmt *, const parser::BackspaceStmt *,
-    const parser::CallStmt *, const parser::CloseStmt *,
-    const parser::ContinueStmt *, const parser::CycleStmt *,
-    const parser::DeallocateStmt *, const parser::EndfileStmt *,
-    const parser::EventPostStmt *, const parser::EventWaitStmt *,
-    const parser::ExitStmt *, const parser::FailImageStmt *,
-    const parser::FlushStmt *, const parser::FormTeamStmt *,
-    const parser::GotoStmt *, const parser::IfStmt *,
-    const parser::InquireStmt *, const parser::LockStmt *,
-    const parser::NullifyStmt *, const parser::OpenStmt *,
-    const parser::PointerAssignmentStmt *, const parser::PrintStmt *,
-    const parser::ReadStmt *, const parser::ReturnStmt *,
-    const parser::RewindStmt *, const parser::StopStmt *,
-    const parser::SyncAllStmt *, const parser::SyncImagesStmt *,
-    const parser::SyncMemoryStmt *, const parser::SyncTeamStmt *,
-    const parser::UnlockStmt *, const parser::WaitStmt *,
-    const parser::WhereStmt *, const parser::WriteStmt *,
-    const parser::ComputedGotoStmt *, const parser::ForallStmt *,
-    const parser::ArithmeticIfStmt *, const parser::AssignStmt *,
-    const parser::AssignedGotoStmt *, const parser::PauseStmt *,
-    const parser::FormatStmt *, const parser::EntryStmt *,
-    const parser::DataStmt *, const parser::NamelistStmt *,
-    const parser::AssociateConstruct *, const parser::BlockConstruct *,
-    const parser::CaseConstruct *, const parser::ChangeTeamConstruct *,
-    const parser::CriticalConstruct *, const parser::DoConstruct *,
-    const parser::IfConstruct *, const parser::SelectRankConstruct *,
-    const parser::SelectTypeConstruct *, const parser::WhereConstruct *,
-    const parser::ForallConstruct *, const parser::CompilerDirective *,
-    const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *>;
-
-/// AST Statement: This flattens out a parse tree Statement (gets rid of
-/// indirections and grammar production structure
-template<typename A, typename B> struct Statement {
-  using TYPE = StatementLike;
-
-  Statement() = delete;
-  Statement(const A &a, const parser::Statement<B> &b) : p{&a}, s{&b} {}
-
-  bool possibleBranchTarget() const { return s->label.has_value(); }
-  parser::CharBlock getCBLocation() const { return s->source; }
-
-  const A *p{nullptr};
-  const parser::Statement<B> *s{nullptr};
-};
-
-template<typename A>
-struct IndirectStmt : public Statement<A, common::Indirection<A>> {
-  IndirectStmt() = delete;
-  IndirectStmt(const parser::Statement<common::Indirection<A>> &stmt)
-    : Statement<A, common::Indirection<A>>{stmt.statement.value(), stmt} {}
-};
-
-template<typename A>
-struct ActionStmt : public Statement<A, parser::ActionStmt> {
-  ActionStmt() = delete;
-  ActionStmt(const A &ptr, const parser::Statement<parser::ActionStmt> &stmt)
-    : Statement<A, parser::ActionStmt>{ptr, stmt} {}
-};
-
-struct Evaluation;
-class ConstructLike {};
-
-/// AST Construct which can contain a list of evaluations
-template<typename A> struct Construct {
-  using TYPE = ConstructLike;
-
-  Construct() = delete;
-  Construct(const A &ptr) : p{&ptr} {}
-
-  const A *p;
-  std::list<Evaluation> evals;
-};
-
 /// Function-like units can contains lists of evaluations.  These can be
 /// (simple) statements or constructs, where a construct contains its own
 /// evaluations.
 struct Evaluation {
+  using EvalVariant = std::variant<const parser::AllocateStmt *,
+      const parser::AssignmentStmt *, const parser::BackspaceStmt *,
+      const parser::CallStmt *, const parser::CloseStmt *,
+      const parser::ContinueStmt *, const parser::CycleStmt *,
+      const parser::DeallocateStmt *, const parser::EndfileStmt *,
+      const parser::EventPostStmt *, const parser::EventWaitStmt *,
+      const parser::ExitStmt *, const parser::FailImageStmt *,
+      const parser::FlushStmt *, const parser::FormTeamStmt *,
+      const parser::GotoStmt *, const parser::IfStmt *,
+      const parser::InquireStmt *, const parser::LockStmt *,
+      const parser::NullifyStmt *, const parser::OpenStmt *,
+      const parser::PointerAssignmentStmt *, const parser::PrintStmt *,
+      const parser::ReadStmt *, const parser::ReturnStmt *,
+      const parser::RewindStmt *, const parser::StopStmt *,
+      const parser::SyncAllStmt *, const parser::SyncImagesStmt *,
+      const parser::SyncMemoryStmt *, const parser::SyncTeamStmt *,
+      const parser::UnlockStmt *, const parser::WaitStmt *,
+      const parser::WhereStmt *, const parser::WriteStmt *,
+      const parser::ComputedGotoStmt *, const parser::ForallStmt *,
+      const parser::ArithmeticIfStmt *, const parser::AssignStmt *,
+      const parser::AssignedGotoStmt *, const parser::PauseStmt *,
+      const parser::FormatStmt *, const parser::EntryStmt *,
+      const parser::DataStmt *, const parser::NamelistStmt *,
+      const parser::AssociateConstruct *, const parser::BlockConstruct *,
+      const parser::CaseConstruct *, const parser::ChangeTeamConstruct *,
+      const parser::CriticalConstruct *, const parser::DoConstruct *,
+      const parser::IfConstruct *, const parser::SelectRankConstruct *,
+      const parser::SelectTypeConstruct *, const parser::WhereConstruct *,
+      const parser::ForallConstruct *, const parser::CompilerDirective *,
+      const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *>;
+  using StmtExtra = std::tuple<parser::CharBlock, std::optional<parser::Label>>;
+
   Evaluation() = delete;
-  template<typename A> Evaluation(const A &a) : u{a} {}
 
-  void setCFG(CFGAnnotation a) { cfg = a; }
-
-  constexpr bool isConstruct() const {
-    return std::visit(
-        [](const auto &x) {
-          using T = typename std::decay<decltype(x)>::type::TYPE;
-          return std::is_same<ConstructLike, T>::value;
-        },
-        u);
+  /// Statement ctor
+  template<typename A>
+  Evaluation(const A &a, const parser::CharBlock &pos,
+      const std::optional<parser::Label> &lab)
+    : u{&a}, ux{StmtExtra{pos, lab}} {
+    static_assert(!isConstruct(a) && "must be a statement");
+    if constexpr (isAction(a)) {
+      isActionStmt = true;
+    }
+    if constexpr (isAction(a) || isOther(a)) {
+      isStatement = true;
+    }
   }
 
-  constexpr bool isStatement() const {
-    return std::visit(
-        [](const auto &x) {
-          using T = typename std::decay<decltype(x)>::type::TYPE;
-          return std::is_same<StatementLike, T>::value;
-        },
-        u);
+  /// Construct ctor
+  template<typename A>
+  Evaluation(const A &a) : u{&a}, ux{std::list<Evaluation>{}} {
+    static_assert(isConstruct(a) && "must be a construct");
   }
 
-  std::list<Evaluation> *getConstructEvals();
-  Part getPart();
+  /// statements that are executable (actions)
+  template<typename A> constexpr static bool isAction(const A &a) {
+    if constexpr (!isConstruct(a) && !isOther(a)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
 
-  std::variant<ActionStmt<parser::AllocateStmt>,
-      ActionStmt<parser::AssignmentStmt>, ActionStmt<parser::BackspaceStmt>,
-      ActionStmt<parser::CallStmt>, ActionStmt<parser::CloseStmt>,
-      ActionStmt<parser::ContinueStmt>, ActionStmt<parser::CycleStmt>,
-      ActionStmt<parser::DeallocateStmt>, ActionStmt<parser::EndfileStmt>,
-      ActionStmt<parser::EventPostStmt>, ActionStmt<parser::EventWaitStmt>,
-      ActionStmt<parser::ExitStmt>, ActionStmt<parser::FailImageStmt>,
-      ActionStmt<parser::FlushStmt>, ActionStmt<parser::FormTeamStmt>,
-      ActionStmt<parser::GotoStmt>, ActionStmt<parser::IfStmt>,
-      ActionStmt<parser::InquireStmt>, ActionStmt<parser::LockStmt>,
-      ActionStmt<parser::NullifyStmt>, ActionStmt<parser::OpenStmt>,
-      ActionStmt<parser::PointerAssignmentStmt>, ActionStmt<parser::PrintStmt>,
-      ActionStmt<parser::ReadStmt>, ActionStmt<parser::ReturnStmt>,
-      ActionStmt<parser::RewindStmt>, ActionStmt<parser::StopStmt>,
-      ActionStmt<parser::SyncAllStmt>, ActionStmt<parser::SyncImagesStmt>,
-      ActionStmt<parser::SyncMemoryStmt>, ActionStmt<parser::SyncTeamStmt>,
-      ActionStmt<parser::UnlockStmt>, ActionStmt<parser::WaitStmt>,
-      ActionStmt<parser::WhereStmt>, ActionStmt<parser::WriteStmt>,
-      ActionStmt<parser::ComputedGotoStmt>, ActionStmt<parser::ForallStmt>,
-      ActionStmt<parser::ArithmeticIfStmt>, ActionStmt<parser::AssignStmt>,
-      ActionStmt<parser::AssignedGotoStmt>, ActionStmt<parser::PauseStmt>,
+  /// constructs (and directives)
+  template<typename A> constexpr static bool isConstruct(const A &) {
+    if constexpr (std::is_same_v<A, parser::AssociateConstruct> ||
+        std::is_same_v<A, parser::BlockConstruct> ||
+        std::is_same_v<A, parser::CaseConstruct> ||
+        std::is_same_v<A, parser::ChangeTeamConstruct> ||
+        std::is_same_v<A, parser::CriticalConstruct> ||
+        std::is_same_v<A, parser::DoConstruct> ||
+        std::is_same_v<A, parser::IfConstruct> ||
+        std::is_same_v<A, parser::SelectRankConstruct> ||
+        std::is_same_v<A, parser::SelectTypeConstruct> ||
+        std::is_same_v<A, parser::WhereConstruct> ||
+        std::is_same_v<A, parser::ForallConstruct> ||
+        std::is_same_v<A, parser::CompilerDirective> ||
+        std::is_same_v<A, parser::OpenMPConstruct> ||
+        std::is_same_v<A, parser::OmpEndLoopDirective>) {
+      return true;
+    } else {
+      return false;
+    }
+  }
 
-      IndirectStmt<parser::FormatStmt>, IndirectStmt<parser::EntryStmt>,
-      IndirectStmt<parser::DataStmt>, IndirectStmt<parser::NamelistStmt>,
+  /// statements that are not executable
+  template<typename A> constexpr static bool isOther(const A &) {
+    if constexpr (std::is_same_v<A, parser::FormatStmt> ||
+        std::is_same_v<A, parser::EntryStmt> ||
+        std::is_same_v<A, parser::DataStmt> ||
+        std::is_same_v<A, parser::NamelistStmt>) {
+      return true;
+    } else {
+      return false;
+    }
+  }
 
-      Construct<parser::AssociateConstruct>, Construct<parser::BlockConstruct>,
-      Construct<parser::CaseConstruct>, Construct<parser::ChangeTeamConstruct>,
-      Construct<parser::CriticalConstruct>, Construct<parser::DoConstruct>,
-      Construct<parser::IfConstruct>, Construct<parser::SelectRankConstruct>,
-      Construct<parser::SelectTypeConstruct>, Construct<parser::WhereConstruct>,
-      Construct<parser::ForallConstruct>, Construct<parser::CompilerDirective>,
-      Construct<parser::OpenMPConstruct>,
-      Construct<parser::OmpEndLoopDirective>>
-      u;
+  constexpr bool isStmt() const { return isStatement; }
+  constexpr bool isConstruct() const { return !isStmt(); }
+
+  /// Set the type of originating control flow type for this evaluation.
+  void setCFG(CFGAnnotation a, Evaluation *cstr) {
+    cfg = a;
+    setBranches(cstr);
+  }
+
+  /// Is this evaluation a control-flow origin? (The AST must be annotated)
+  bool isControlOrigin() const { return cfg != CFGAnnotation::None; }
+
+  /// Is this evaluation a control-flow target? (The AST must be annotated)
+  bool isControlTarget() const { return isTarget; }
+
+  /// Set the hasBranches flag iff this evaluation (a construct) contains
+  /// control flow
+  void setBranches() { hasBranches = true; }
+
+  constexpr std::list<Evaluation> *getConstructEvals() {
+    return isStatement ? nullptr : std::get_if<std::list<Evaluation>>(&ux);
+  }
+
+  /// Set that the construct `cstr` (if not a nullptr) has branches.
+  static void setBranches(Evaluation *cstr) {
+    if (cstr) {
+      cstr->setBranches();
+    }
+  }
+
+  EvalVariant u;
+  std::variant<StmtExtra, std::list<Evaluation>> ux;
   CFGAnnotation cfg{CFGAnnotation::None};
+  bool isStatement{false};
+  bool isActionStmt{false};
+  bool isTarget{false};
+  bool hasBranches{false};
 };
 
 /// A program is a list of program units.

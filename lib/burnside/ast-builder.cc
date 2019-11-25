@@ -79,19 +79,19 @@ public:
   // Evaluation
 
   void Post(const Pa::Statement<Pa::ActionStmt> &s) {
-    addEvaluation(makeEvalAction(s));
+    addEval(makeEvalAction(s));
   }
   void Post(const Pa::Statement<Co::Indirection<Pa::FormatStmt>> &s) {
-    addEval(AST::IndirectStmt{s});
+    addEval(makeEvalIndirect(s));
   }
   void Post(const Pa::Statement<Co::Indirection<Pa::EntryStmt>> &s) {
-    addEval(AST::IndirectStmt{s});
+    addEval(makeEvalIndirect(s));
   }
   void Post(const Pa::Statement<Co::Indirection<Pa::DataStmt>> &s) {
-    addEval(AST::IndirectStmt{s});
+    addEval(makeEvalIndirect(s));
   }
   void Post(const Pa::Statement<Co::Indirection<Pa::NamelistStmt>> &s) {
-    addEval(AST::IndirectStmt{s});
+    addEval(makeEvalIndirect(s));
   }
 
   bool Pre(const Pa::AssociateConstruct &c) { return enterConstruct(c); }
@@ -132,16 +132,21 @@ private:
     return std::visit(
         common::visitors{
             [&](const Pa::ContinueStmt &x) {
-              return AST::Evaluation{AST::ActionStmt{x, s}};
+              return AST::Evaluation{x, s.source, s.label};
             },
             [&](const Pa::FailImageStmt &x) {
-              return AST::Evaluation{AST::ActionStmt{x, s}};
+              return AST::Evaluation{x, s.source, s.label};
             },
             [&](const auto &x) {
-              return AST::Evaluation{AST::ActionStmt{x.value(), s}};
+              return AST::Evaluation{x.value(), s.source, s.label};
             },
         },
         s.statement.u);
+  }
+
+  template<typename A>
+  AST::Evaluation makeEvalIndirect(const Pa::Statement<Co::Indirection<A>> &s) {
+    return AST::Evaluation{s.statement.value(), s.source, s.label};
   }
 
   // When we enter a function-like structure, we want to build a new unit and
@@ -162,9 +167,9 @@ private:
   // When we enter a construct structure, we want to build a new construct and
   // set the builder's evaluation cursor to point to it.
   template<typename A> bool enterConstruct(const A &c) {
-    AST::Construct con{c};
+    AST::Evaluation con{c};
     addEval(con);
-    pushEval(&con.evals);
+    pushEval(con.getConstructEvals());
     return true;
   }
 
@@ -192,14 +197,11 @@ private:
       addUnit(func);
   }
 
-  template<typename A> void addEval(const A &eval) {
-    addEvaluation(AST::Evaluation{eval});
-  }
-
-  void addEvaluation(const AST::Evaluation &eval) {
+  void addEval(const AST::Evaluation &eval) {
     assert(funclist);
     evallist.back()->emplace_back(eval);
   }
+
   void pushEval(std::list<AST::Evaluation> *eval) {
     assert(funclist);
     evallist.push_back(eval);
@@ -215,73 +217,163 @@ private:
   std::vector<std::list<AST::Evaluation> *> evallist;
 };
 
-template<typename A> void ioLabel(AST::Evaluation &e, const A *s) {
-  // FIXME
+template<typename A> constexpr bool hasErrLabel(const A &stmt) {
+  if constexpr (std::is_same_v<A, Pa::ReadStmt> ||
+      std::is_same_v<A, Pa::WriteStmt>) {
+    for (const auto &control : stmt.controls) {
+      if (std::holds_alternative<Pa::ErrLabel>(control.u)) {
+        return true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<A, Pa::WaitStmt> ||
+      std::is_same_v<A, Pa::OpenStmt> || std::is_same_v<A, Pa::CloseStmt> ||
+      std::is_same_v<A, Pa::BackspaceStmt> ||
+      std::is_same_v<A, Pa::EndfileStmt> || std::is_same_v<A, Pa::RewindStmt> ||
+      std::is_same_v<A, Pa::FlushStmt>) {
+    for (const auto &spec : stmt.v) {
+      if (std::holds_alternative<Pa::ErrLabel>(spec.u)) {
+        return true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<A, Pa::InquireStmt>) {
+    for (const auto &spec : std::get<std::list<Pa::InquireSpec>>(stmt.u)) {
+      if (std::holds_alternative<Pa::ErrLabel>(spec.u)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
-void annotateEvalListCFG(std::list<AST::Evaluation> &evals) {
+template<typename A> constexpr bool hasEorLabel(const A &stmt) {
+  if constexpr (std::is_same_v<A, Pa::ReadStmt> ||
+      std::is_same_v<A, Pa::WriteStmt>) {
+    for (const auto &control : stmt.controls) {
+      if (std::holds_alternative<Pa::EorLabel>(control.u)) {
+        return true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<A, Pa::WaitStmt>) {
+    for (const auto &waitSpec : stmt.v) {
+      if (std::holds_alternative<Pa::EorLabel>(waitSpec.u)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+template<typename A> constexpr bool hasEndLabel(const A &stmt) {
+  if constexpr (std::is_same_v<A, Pa::ReadStmt> ||
+      std::is_same_v<A, Pa::WriteStmt>) {
+    for (const auto &control : stmt.controls) {
+      if (std::holds_alternative<Pa::EndLabel>(control.u)) {
+        return true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<A, Pa::WaitStmt>) {
+    for (const auto &waitSpec : stmt.v) {
+      if (std::holds_alternative<Pa::EndLabel>(waitSpec.u)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool hasAltReturns(const Pa::CallStmt &callStmt) {
+  const auto &args{std::get<std::list<Pa::ActualArgSpec>>(callStmt.v.t)};
+  for (const auto &arg : args) {
+    const auto &actual{std::get<Pa::ActualArg>(arg.t)};
+    if (std::holds_alternative<Pa::AltReturnSpec>(actual.u)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Determine if `callStmt` has alternate returns and if so set `e` to be the
+/// origin of a switch-like control flow
+void altRet(
+    AST::Evaluation &e, const Pa::CallStmt *callStmt, AST::Evaluation *cstr) {
+  if (hasAltReturns(*callStmt)) {
+    e.setCFG(AST::CFGAnnotation::Switch, cstr);
+  }
+}
+
+template<typename A>
+void ioLabel(AST::Evaluation &e, const A *s, AST::Evaluation *cstr) {
+  if (hasErrLabel(*s) || hasEorLabel(*s) || hasEndLabel(*s)) {
+    e.setCFG(AST::CFGAnnotation::IoSwitch, cstr);
+  }
+}
+
+void annotateEvalListCFG(
+    std::list<AST::Evaluation> &evals, AST::Evaluation *cstr) {
+  bool nextIsTarget = false;
   for (auto e : evals) {
+    e.isTarget = nextIsTarget;
+    nextIsTarget = false;
     if (e.isConstruct()) {
-      annotateEvalListCFG(*e.getConstructEvals());
+      annotateEvalListCFG(*e.getConstructEvals(), &e);
+      // assume that the entry and exit are both possible branch targets
+      e.isTarget = nextIsTarget = true;
       continue;
     }
     std::visit(
         common::visitors{
-            [&](Pa::BackspaceStmt *s) { ioLabel(e, s); },
-            [&](Pa::CallStmt *) {},
-            [&](Pa::CloseStmt *s) { ioLabel(e, s); },
-            [&](Pa::CycleStmt *) { e.setCFG(AST::CFGAnnotation::Goto); },
-            [&](Pa::EndfileStmt *s) { ioLabel(e, s); },
-            [&](Pa::ExitStmt *) { e.setCFG(AST::CFGAnnotation::Goto); },
-            [&](Pa::FailImageStmt *) { e.setCFG(AST::CFGAnnotation::Return); },
-            [&](Pa::FlushStmt *s) { ioLabel(e, s); },
-            [&](Pa::GotoStmt *) { e.setCFG(AST::CFGAnnotation::Goto); },
-            [&](Pa::IfStmt *) { e.setCFG(AST::CFGAnnotation::CondGoto); },
-            [&](Pa::InquireStmt *s) { ioLabel(e, s); },
-            [&](Pa::OpenStmt *s) { ioLabel(e, s); },
-            [&](Pa::ReadStmt *s) { ioLabel(e, s); },
-            [&](Pa::ReturnStmt *) { e.setCFG(AST::CFGAnnotation::Return); },
-            [&](Pa::RewindStmt *s) { ioLabel(e, s); },
-            [&](Pa::StopStmt *) { e.setCFG(AST::CFGAnnotation::Return); },
-            [&](Pa::WaitStmt *s) { ioLabel(e, s); },
-            [&](Pa::WriteStmt *s) { ioLabel(e, s); },
+            [&](Pa::BackspaceStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::CallStmt *s) { altRet(e, s, cstr); },
+            [&](Pa::CloseStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::CycleStmt *) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
+            [&](Pa::EndfileStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::ExitStmt *) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
+            [&](Pa::FailImageStmt *) {
+              e.setCFG(AST::CFGAnnotation::Return, cstr);
+            },
+            [&](Pa::FlushStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::GotoStmt *) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
+            [&](Pa::IfStmt *) { e.setCFG(AST::CFGAnnotation::CondGoto, cstr); },
+            [&](Pa::InquireStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::OpenStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::ReadStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::ReturnStmt *) {
+              e.setCFG(AST::CFGAnnotation::Return, cstr);
+            },
+            [&](Pa::RewindStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::StopStmt *) { e.setCFG(AST::CFGAnnotation::Return, cstr); },
+            [&](Pa::WaitStmt *s) { ioLabel(e, s, cstr); },
+            [&](Pa::WriteStmt *s) { ioLabel(e, s, cstr); },
             [&](Pa::ArithmeticIfStmt *) {
-              e.setCFG(AST::CFGAnnotation::Switch);
+              e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
             [&](Pa::AssignedGotoStmt *) {
-              e.setCFG(AST::CFGAnnotation::IndGoto);
+              e.setCFG(AST::CFGAnnotation::IndGoto, cstr);
             },
             [&](Pa::ComputedGotoStmt *) {
-              e.setCFG(AST::CFGAnnotation::Switch);
+              e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
-            [](auto *) {},
+            [](auto *) { /* do nothing */ },
         },
-        e.getPart());
+        e.u);
+    if (e.isActionStmt &&
+        std::get<std::optional<parser::Label>>(
+            std::get<AST::Evaluation::StmtExtra>(e.ux))
+            .has_value()) {
+      e.isTarget = true;
+    }
   }
 }
 
 inline void annotateFuncCFG(AST::FunctionLikeUnit &flu) {
-  annotateEvalListCFG(flu.evals);
+  annotateEvalListCFG(flu.evals, nullptr);
 }
 
 }  // namespace
-
-std::list<AST::Evaluation> *Br::AST::Evaluation::getConstructEvals() {
-  return std::visit(
-      [](auto &ct) -> std::list<AST::Evaluation> * {
-        using T = typename std::decay<decltype(ct)>::type::TYPE;
-        if constexpr (std::is_same<AST::ConstructLike, T>::value) {
-          return &ct.evals;
-        } else {
-          return nullptr;
-        }
-      },
-      u);
-}
-
-AST::Part Br::AST::Evaluation::getPart() {
-  return std::visit([](auto &x) { return AST::Part{x.p}; }, u);
-}
 
 Br::AST::FunctionLikeUnit::FunctionLikeUnit(const Pa::MainProgram &f)
   : ProgramUnit{&f} {
