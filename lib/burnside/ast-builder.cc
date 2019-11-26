@@ -357,13 +357,11 @@ void annotateEvalListCFG(
             [&](Pa::ComputedGotoStmt *) {
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
+            [&](AST::CGJump &) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
             [](auto *) { /* do nothing */ },
         },
         e.u);
-    if (e.isActionStmt &&
-        std::get<std::optional<parser::Label>>(
-            std::get<AST::Evaluation::StmtExtra>(e.ux))
-            .has_value()) {
+    if (e.isActionStmt() && e.lab.has_value()) {
       e.isTarget = true;
     }
   }

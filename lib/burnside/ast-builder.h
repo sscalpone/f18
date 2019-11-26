@@ -21,6 +21,8 @@
 namespace Fortran::burnside {
 namespace AST {
 
+struct Evaluation;
+
 enum class CFGAnnotation {
   None,
   Goto,
@@ -29,6 +31,15 @@ enum class CFGAnnotation {
   IoSwitch,
   Switch,
   Return
+};
+
+/// Compiler-generated jump
+///
+/// This is used to convert implicit control-flow edges to explicit form in the
+/// decorated AST
+struct CGJump {
+  CGJump(Evaluation *to) : target{to} {}
+  Evaluation *target{nullptr};
 };
 
 /// Function-like units can contains lists of evaluations.  These can be
@@ -55,7 +66,7 @@ struct Evaluation {
       const parser::WhereStmt *, const parser::WriteStmt *,
       const parser::ComputedGotoStmt *, const parser::ForallStmt *,
       const parser::ArithmeticIfStmt *, const parser::AssignStmt *,
-      const parser::AssignedGotoStmt *, const parser::PauseStmt *,
+      const parser::AssignedGotoStmt *, const parser::PauseStmt *, CGJump,
       const parser::FormatStmt *, const parser::EntryStmt *,
       const parser::DataStmt *, const parser::NamelistStmt *,
       const parser::AssociateConstruct *, const parser::BlockConstruct *,
@@ -65,31 +76,24 @@ struct Evaluation {
       const parser::SelectTypeConstruct *, const parser::WhereConstruct *,
       const parser::ForallConstruct *, const parser::CompilerDirective *,
       const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *>;
-  using StmtExtra = std::tuple<parser::CharBlock, std::optional<parser::Label>>;
 
   Evaluation() = delete;
 
-  /// Statement ctor
+  /// General ctor
   template<typename A>
   Evaluation(const A &a, const parser::CharBlock &pos,
       const std::optional<parser::Label> &lab)
-    : u{&a}, ux{StmtExtra{pos, lab}} {
-    static_assert(!isConstruct(a) && "must be a statement");
-    if constexpr (isAction(a)) {
-      isActionStmt = true;
-    }
-    if constexpr (isAction(a) || isOther(a)) {
-      isStatement = true;
-    }
-  }
+    : u{&a}, pos{pos}, lab{lab} {}
+
+  /// Compiler-generated jump
+  Evaluation(const CGJump &jump) : u(jump), cfg{CFGAnnotation::Goto} {}
 
   /// Construct ctor
-  template<typename A>
-  Evaluation(const A &a) : u{&a}, ux{std::list<Evaluation>{}} {
+  template<typename A> Evaluation(const A &a) : u{&a} {
     static_assert(isConstruct(a) && "must be a construct");
   }
 
-  /// statements that are executable (actions)
+  /// is `A` executable (an action statement or compiler generated)?
   template<typename A> constexpr static bool isAction(const A &a) {
     if constexpr (!isConstruct(a) && !isOther(a)) {
       return true;
@@ -98,7 +102,16 @@ struct Evaluation {
     }
   }
 
-  /// constructs (and directives)
+  /// is `A` a compiler-generated evaluation?
+  template<typename A> constexpr static bool isGenerated(const A &) {
+    if constexpr (std::is_same_v<A, CGJump>) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /// is `A` a construct (or directive)?
   template<typename A> constexpr static bool isConstruct(const A &) {
     if constexpr (std::is_same_v<A, parser::AssociateConstruct> ||
         std::is_same_v<A, parser::BlockConstruct> ||
@@ -120,7 +133,7 @@ struct Evaluation {
     }
   }
 
-  /// statements that are not executable
+  /// is `A` not an executable statement?
   template<typename A> constexpr static bool isOther(const A &) {
     if constexpr (std::is_same_v<A, parser::FormatStmt> ||
         std::is_same_v<A, parser::EntryStmt> ||
@@ -132,7 +145,21 @@ struct Evaluation {
     }
   }
 
-  constexpr bool isStmt() const { return isStatement; }
+  constexpr bool isActionStmt() const {
+    return std::visit(common::visitors{
+                          [](auto *p) { return isAction(*p); },
+                          [](auto &r) { return isGenerated(r); },
+                      },
+        u);
+  }
+
+  constexpr bool isStmt() const {
+    return std::visit(common::visitors{
+                          [](auto *p) { return isAction(*p) || isOther(*p); },
+                          [](auto &r) { return isGenerated(r); },
+                      },
+        u);
+  }
   constexpr bool isConstruct() const { return !isStmt(); }
 
   /// Set the type of originating control flow type for this evaluation.
@@ -147,12 +174,12 @@ struct Evaluation {
   /// Is this evaluation a control-flow target? (The AST must be annotated)
   bool isControlTarget() const { return isTarget; }
 
-  /// Set the hasBranches flag iff this evaluation (a construct) contains
+  /// Set the containsBranches flag iff this evaluation (a construct) contains
   /// control flow
-  void setBranches() { hasBranches = true; }
+  void setBranches() { containsBranches = true; }
 
   constexpr std::list<Evaluation> *getConstructEvals() {
-    return isStatement ? nullptr : std::get_if<std::list<Evaluation>>(&ux);
+    return isStmt() ? nullptr : &subs;
   }
 
   /// Set that the construct `cstr` (if not a nullptr) has branches.
@@ -163,12 +190,12 @@ struct Evaluation {
   }
 
   EvalVariant u;
-  std::variant<StmtExtra, std::list<Evaluation>> ux;
+  parser::CharBlock pos;
+  std::optional<parser::Label> lab;
+  std::list<Evaluation> subs;
   CFGAnnotation cfg{CFGAnnotation::None};
-  bool isStatement{false};
-  bool isActionStmt{false};
-  bool isTarget{false};
-  bool hasBranches{false};
+  bool isTarget{false};  // this evaluation is a control target
+  bool containsBranches{false};  // construct contains branches
 };
 
 /// A program is a list of program units.
