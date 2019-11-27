@@ -76,7 +76,9 @@ public:
     addUnit(unit);
   }
 
-  // Evaluation
+  //
+  // Action statements
+  //
 
   void Post(const Pa::Statement<Pa::ActionStmt> &s) {
     addEval(makeEvalAction(s));
@@ -84,6 +86,11 @@ public:
   void Post(const Pa::UnlabeledStatement<Pa::ActionStmt> &s) {
     addEval(makeEvalAction(s));
   }
+
+  //
+  // Non-executable statements
+  //
+  
   void Post(const Pa::Statement<Co::Indirection<Pa::FormatStmt>> &s) {
     addEval(makeEvalIndirect(s));
   }
@@ -97,6 +104,10 @@ public:
     addEval(makeEvalIndirect(s));
   }
 
+  //
+  // Construct statements
+  //
+  
   void Post(const Pa::Statement<parser::AssociateStmt> &s) {
     addEval(makeEvalDirect(s));
   }
@@ -178,6 +189,7 @@ public:
   void Post(const Pa::Statement<parser::EndForallStmt> &s) {
     addEval(makeEvalDirect(s));
   }
+  // Get rid of production wrapper
   void Post(const Pa::UnlabeledStatement<parser::ForallAssignmentStmt> &s) {
     addEval(std::visit(
         [&](const auto &x) {
@@ -193,6 +205,10 @@ public:
         s.statement.u));
   }
 
+  //
+  // Constructs (enter and exit)
+  //
+  
   bool Pre(const Pa::AssociateConstruct &c) { return enterConstruct(c); }
   bool Pre(const Pa::BlockConstruct &c) { return enterConstruct(c); }
   bool Pre(const Pa::CaseConstruct &c) { return enterConstruct(c); }
