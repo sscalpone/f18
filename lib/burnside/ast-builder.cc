@@ -375,31 +375,72 @@ void annotateEvalListCFG(
             [&](const Pa::ComputedGotoStmt *) {
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
-            [&](AST::CGJump &) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
-            [&](const Pa::CaseConstruct *) {
-              e.setCFG(AST::CFGAnnotation::Switch, cstr);
-            },
-            [&](const Pa::DoConstruct *) {
+            [&](const Pa::WhereStmt *) {
+              // fir.loop + fir.where around the next stmt
               e.isTarget = true;
               e.setCFG(AST::CFGAnnotation::Iterative, cstr);
             },
-            [&](const Pa::IfConstruct *) {
+            [&](const Pa::ForallStmt *) {
+              // fir.loop around the next stmt
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::Iterative, cstr);
+            },
+            [&](AST::CGJump &) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
+            [&](const Pa::EndAssociateStmt *) { e.isTarget = true; },
+            [&](const Pa::EndBlockStmt *) { e.isTarget = true; },
+            [&](const Pa::SelectCaseStmt *) {
+              e.setCFG(AST::CFGAnnotation::Switch, cstr);
+            },
+            [&](const Pa::CaseStmt *) { e.isTarget = true; },
+            [&](const Pa::EndSelectStmt *) { e.isTarget = true; },
+            [&](const Pa::EndChangeTeamStmt *) { e.isTarget = true; },
+            [&](const Pa::EndCriticalStmt *) { e.isTarget = true; },
+            [&](const Pa::NonLabelDoStmt *) {
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::Iterative, cstr);
+            },
+            [&](const Pa::EndDoStmt *) {
+              e.isTarget = true;
               e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
             },
-            [&](const Pa::SelectRankConstruct *) {
+            [&](const Pa::IfThenStmt *) {
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::ElseIfStmt *) {
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::ElseStmt *) { e.isTarget = true; },
+            [&](const Pa::EndIfStmt *) { e.isTarget = true; },
+            [&](const Pa::SelectRankStmt *) {
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
-            [&](const Pa::SelectTypeConstruct *) {
+            [&](const Pa::SelectRankCaseStmt *) { e.isTarget = true; },
+            [&](const Pa::SelectTypeStmt *) {
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
+            [&](const Pa::TypeGuardStmt *) { e.isTarget = true; },
             [&](const Pa::WhereConstruct *) {
+              // mark the WHERE as if it were a DO loop
               e.isTarget = true;
               e.setCFG(AST::CFGAnnotation::Iterative, cstr);
             },
-            [&](const Pa::ForallConstruct *) {
+            [&](const Pa::WhereConstructStmt *) {
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::MaskedElsewhereStmt *) {
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::ElsewhereStmt *) {
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::EndWhereStmt *) { e.isTarget = true; },
+            [&](const Pa::ForallConstructStmt *) {
               e.isTarget = true;
               e.setCFG(AST::CFGAnnotation::Iterative, cstr);
             },
+            [&](const Pa::EndForallStmt *) { e.isTarget = true; },
             [](const auto *) { /* do nothing */ },
         },
         e.u);

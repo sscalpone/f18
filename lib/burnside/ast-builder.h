@@ -48,36 +48,55 @@ struct CGJump {
 /// (simple) statements or constructs, where a construct contains its own
 /// evaluations.
 struct Evaluation {
-  using EvalVariant = std::variant<const parser::AllocateStmt *,
-      const parser::AssignmentStmt *, const parser::BackspaceStmt *,
-      const parser::CallStmt *, const parser::CloseStmt *,
-      const parser::ContinueStmt *, const parser::CycleStmt *,
-      const parser::DeallocateStmt *, const parser::EndfileStmt *,
-      const parser::EventPostStmt *, const parser::EventWaitStmt *,
-      const parser::ExitStmt *, const parser::FailImageStmt *,
-      const parser::FlushStmt *, const parser::FormTeamStmt *,
-      const parser::GotoStmt *, const parser::IfStmt *,
-      const parser::InquireStmt *, const parser::LockStmt *,
-      const parser::NullifyStmt *, const parser::OpenStmt *,
-      const parser::PointerAssignmentStmt *, const parser::PrintStmt *,
-      const parser::ReadStmt *, const parser::ReturnStmt *,
-      const parser::RewindStmt *, const parser::StopStmt *,
-      const parser::SyncAllStmt *, const parser::SyncImagesStmt *,
-      const parser::SyncMemoryStmt *, const parser::SyncTeamStmt *,
-      const parser::UnlockStmt *, const parser::WaitStmt *,
-      const parser::WhereStmt *, const parser::WriteStmt *,
-      const parser::ComputedGotoStmt *, const parser::ForallStmt *,
-      const parser::ArithmeticIfStmt *, const parser::AssignStmt *,
-      const parser::AssignedGotoStmt *, const parser::PauseStmt *, CGJump,
+  using EvalVariant = std::variant<
+      // action statements
+      const parser::AllocateStmt *, const parser::AssignmentStmt *,
+      const parser::BackspaceStmt *, const parser::CallStmt *,
+      const parser::CloseStmt *, const parser::ContinueStmt *,
+      const parser::CycleStmt *, const parser::DeallocateStmt *,
+      const parser::EndfileStmt *, const parser::EventPostStmt *,
+      const parser::EventWaitStmt *, const parser::ExitStmt *,
+      const parser::FailImageStmt *, const parser::FlushStmt *,
+      const parser::FormTeamStmt *, const parser::GotoStmt *,
+      const parser::IfStmt *, const parser::InquireStmt *,
+      const parser::LockStmt *, const parser::NullifyStmt *,
+      const parser::OpenStmt *, const parser::PointerAssignmentStmt *,
+      const parser::PrintStmt *, const parser::ReadStmt *,
+      const parser::ReturnStmt *, const parser::RewindStmt *,
+      const parser::StopStmt *, const parser::SyncAllStmt *,
+      const parser::SyncImagesStmt *, const parser::SyncMemoryStmt *,
+      const parser::SyncTeamStmt *, const parser::UnlockStmt *,
+      const parser::WaitStmt *, const parser::WhereStmt *,
+      const parser::WriteStmt *, const parser::ComputedGotoStmt *,
+      const parser::ForallStmt *, const parser::ArithmeticIfStmt *,
+      const parser::AssignStmt *, const parser::AssignedGotoStmt *,
+      const parser::PauseStmt *,
+      // compiler generated ops
+      CGJump,
+      // other statements
       const parser::FormatStmt *, const parser::EntryStmt *,
       const parser::DataStmt *, const parser::NamelistStmt *,
+      // constructs
       const parser::AssociateConstruct *, const parser::BlockConstruct *,
       const parser::CaseConstruct *, const parser::ChangeTeamConstruct *,
       const parser::CriticalConstruct *, const parser::DoConstruct *,
       const parser::IfConstruct *, const parser::SelectRankConstruct *,
       const parser::SelectTypeConstruct *, const parser::WhereConstruct *,
       const parser::ForallConstruct *, const parser::CompilerDirective *,
-      const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *>;
+      const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *,
+      // construct statements
+      const parser::EndAssociateStmt *, const parser::EndBlockStmt *,
+      const parser::SelectCaseStmt *, const parser::CaseStmt *,
+      const parser::EndSelectStmt *, const parser::EndChangeTeamStmt *,
+      const parser::EndCriticalStmt *, const parser::NonLabelDoStmt *,
+      const parser::EndDoStmt *, const parser::IfThenStmt *,
+      const parser::ElseIfStmt *, const parser::ElseStmt *,
+      const parser::EndIfStmt *, const parser::SelectRankStmt *,
+      const parser::SelectRankCaseStmt *, const parser::SelectTypeStmt *,
+      const parser::TypeGuardStmt *, const parser::WhereConstructStmt *,
+      const parser::MaskedElsewhereStmt *, const parser::ElsewhereStmt *,
+      const parser::EndWhereStmt *, const parser::ForallConstructStmt *,
+      const parser::EndForallStmt *>;
 
   Evaluation() = delete;
   Evaluation(const Evaluation &) = default;

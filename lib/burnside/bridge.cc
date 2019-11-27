@@ -527,6 +527,8 @@ class OBSOLETE_FIRConverter {
 class FirConverter {
   using LabelMapType = std::map<AST::Evaluation *, M::Block *>;
   using Closure = std::function<void(const LabelMapType &)>;
+  using CFGSinkListType = L::SmallVector<AST::Evaluation *, 2>;
+  using CFGMapType = L::DenseMap<AST::Evaluation *, CFGSinkListType *>;
 
   //
   // Function-like AST entry and exit statements
@@ -718,7 +720,7 @@ class FirConverter {
     }
 #endif
   }
-  void genFIR(const Pa::IfConstruct &) { TODO(); }
+  void genFIR(const Pa::IfConstruct &cst) { TODO(); }
   void genFIR(const Pa::SelectRankConstruct &) { TODO(); }
   void genFIR(const Pa::SelectTypeConstruct &) { TODO(); }
   void genFIR(const Pa::WhereConstruct &) { TODO(); }
@@ -728,6 +730,30 @@ class FirConverter {
   void genFIR(const Pa::CompilerDirective &) { TODO(); }
   void genFIR(const Pa::OpenMPConstruct &) { TODO(); }
   void genFIR(const Pa::OmpEndLoopDirective &) { TODO(); }
+  
+  void genFIR(const parser::EndAssociateStmt &) { TODO(); }
+  void genFIR(const parser::EndBlockStmt &) { TODO(); }
+  void genFIR(const parser::SelectCaseStmt &) { TODO(); }
+  void genFIR(const parser::CaseStmt &) { TODO(); }
+  void genFIR(const parser::EndSelectStmt &) { TODO(); }
+  void genFIR(const parser::EndChangeTeamStmt &) { TODO(); }
+  void genFIR(const parser::EndCriticalStmt &) { TODO(); }
+  void genFIR(const parser::NonLabelDoStmt &) { TODO(); }
+  void genFIR(const parser::EndDoStmt &) { TODO(); }
+  void genFIR(const parser::IfThenStmt &) { TODO(); }
+  void genFIR(const parser::ElseIfStmt &) { TODO(); }
+  void genFIR(const parser::ElseStmt &) { TODO(); }
+  void genFIR(const parser::EndIfStmt &) { TODO(); }  
+  void genFIR(const parser::SelectRankStmt &) { TODO(); }
+  void genFIR(const parser::SelectRankCaseStmt &) { TODO(); }
+  void genFIR(const parser::SelectTypeStmt &) { TODO(); }
+  void genFIR(const parser::TypeGuardStmt &) { TODO(); }
+  void genFIR(const parser::WhereConstructStmt &) { TODO(); }
+  void genFIR(const parser::MaskedElsewhereStmt &) { TODO(); }
+  void genFIR(const parser::ElsewhereStmt &) { TODO(); }
+  void genFIR(const parser::EndWhereStmt &) { TODO(); }
+  void genFIR(const parser::ForallConstructStmt &) { TODO(); }
+  void genFIR(const parser::EndForallStmt &) { TODO(); }
 
   //
   // Statements that do not have control-flow semantics
@@ -959,7 +985,7 @@ class FirConverter {
   // Finalization of the CFG structure
   //
 
-  /// Lookup the set of sinks for this source.
+  /// Lookup the set of sinks for this source. There must be at least one.
   L::ArrayRef<AST::Evaluation *> findTargetsOf(AST::Evaluation &eval) {
     auto iter = cfgMap.find(&eval);
     assert(iter != cfgMap.end());
@@ -973,13 +999,14 @@ class FirConverter {
     return iter->second->front();
   }
 
+  /// Add source->sink edge to CFG map
   void addSourceToSink(AST::Evaluation *src, AST::Evaluation *snk) {
     auto iter = cfgMap.find(src);
     if (iter == cfgMap.end()) {
       CFGSinkListType sink{snk};
       cfgEdgeSetPool.emplace_back(std::move(sink));
       auto rc{cfgMap.try_emplace(src, &cfgEdgeSetPool.back())};
-      assert(rc.second && "insert failed");
+      assert(rc.second && "insert failed unexpectedly");
       return;
     }
     for (auto *s : *iter->second)
@@ -990,7 +1017,15 @@ class FirConverter {
   }
 
   /// prune the CFG for `f`
-  void pruneFunc(AST::FunctionLikeUnit &f) { SOFT_TODO(); }
+  void pruneFunc(AST::FunctionLikeUnit &func) {
+    // find and cache arcs, etc.
+    SOFT_TODO();
+
+    // do any internal procedures
+    for (auto &f : func.funcs) {
+      pruneFunc(f);
+    }
+  }
 
   void pruneMod(AST::ModuleLikeUnit &mod) {
     for (auto &f : mod.funcs) {
@@ -1047,9 +1082,6 @@ class FirConverter {
   }
 
 private:
-  using CFGSinkListType = L::SmallVector<AST::Evaluation *, 2>;
-  using CFGMapType = L::DenseMap<AST::Evaluation *, CFGSinkListType *>;
-
   M::MLIRContext &mlirContext;
   const Pa::CookedSource *cooked;
   M::ModuleOp &module;
