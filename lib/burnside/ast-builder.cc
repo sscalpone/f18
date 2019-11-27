@@ -327,8 +327,10 @@ void annotateEvalListCFG(
     if (e.isConstruct()) {
       annotateEvalListCFG(*e.getConstructEvals(), &e);
       // assume that the entry and exit are both possible branch targets
-      e.isTarget = nextIsTarget = true;
-      continue;
+      nextIsTarget = true;
+    }
+    if (e.isActionStmt() && e.lab.has_value()) {
+      e.isTarget = true;
     }
     std::visit(
         common::visitors{
@@ -374,12 +376,33 @@ void annotateEvalListCFG(
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
             [&](AST::CGJump &) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
+            [&](const Pa::CaseConstruct *) {
+              e.setCFG(AST::CFGAnnotation::Switch, cstr);
+            },
+            [&](const Pa::DoConstruct *) {
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::Iterative, cstr);
+            },
+            [&](const Pa::IfConstruct *) {
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::SelectRankConstruct *) {
+              e.setCFG(AST::CFGAnnotation::Switch, cstr);
+            },
+            [&](const Pa::SelectTypeConstruct *) {
+              e.setCFG(AST::CFGAnnotation::Switch, cstr);
+            },
+            [&](const Pa::WhereConstruct *) {
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::Iterative, cstr);
+            },
+            [&](const Pa::ForallConstruct *) {
+              e.isTarget = true;
+              e.setCFG(AST::CFGAnnotation::Iterative, cstr);
+            },
             [](const auto *) { /* do nothing */ },
         },
         e.u);
-    if (e.isActionStmt() && e.lab.has_value()) {
-      e.isTarget = true;
-    }
   }
 }
 

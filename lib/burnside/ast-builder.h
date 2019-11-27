@@ -30,6 +30,7 @@ enum class CFGAnnotation {
   IndGoto,
   IoSwitch,
   Switch,
+  Iterative,
   Return,
   Terminate
 };
