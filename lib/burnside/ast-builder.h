@@ -30,7 +30,8 @@ enum class CFGAnnotation {
   IndGoto,
   IoSwitch,
   Switch,
-  Return
+  Return,
+  Terminate
 };
 
 /// Compiler-generated jump

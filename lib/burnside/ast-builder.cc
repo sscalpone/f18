@@ -343,7 +343,7 @@ void annotateEvalListCFG(
               e.setCFG(AST::CFGAnnotation::Goto, cstr);
             },
             [&](const Pa::FailImageStmt *) {
-              e.setCFG(AST::CFGAnnotation::Return, cstr);
+              e.setCFG(AST::CFGAnnotation::Terminate, cstr);
             },
             [&](const Pa::FlushStmt *s) { ioLabel(e, s, cstr); },
             [&](const Pa::GotoStmt *) {
@@ -360,7 +360,7 @@ void annotateEvalListCFG(
             },
             [&](const Pa::RewindStmt *s) { ioLabel(e, s, cstr); },
             [&](const Pa::StopStmt *) {
-              e.setCFG(AST::CFGAnnotation::Return, cstr);
+              e.setCFG(AST::CFGAnnotation::Terminate, cstr);
             },
             [&](const Pa::WaitStmt *s) { ioLabel(e, s, cstr); },
             [&](const Pa::WriteStmt *s) { ioLabel(e, s, cstr); },
