@@ -21,7 +21,7 @@
 #include "intrinsics.h"
 #include "io.h"
 #include "runtime.h"
-#include "../parser/parse-tree-visitor.h"
+#include "../parser/parse-tree.h"
 #include "../semantics/tools.h"
 #include "fir/FIRDialect.h"
 #include "fir/FIROps.h"
@@ -38,7 +38,7 @@
 
 #undef SOFT_TODO
 #define SOFT_TODO() \
-  llvm::errs() << __FILE__ << ":" << __LINE__ << " not implemented\n";
+  llvm::errs() << __FILE__ << ":" << __LINE__ << " not yet implemented\n";
 
 namespace Br = Fortran::burnside;
 namespace Co = Fortran::common;
@@ -603,7 +603,6 @@ class FirConverter {
 
   // Conditional goto control-flow semantics
   void genFIREvalCondGoto(AST::Evaluation &eval) {
-    using namespace std::placeholders;
     genFIR(eval);
     auto targets{findTargetsOf(eval)};
     // FIXME - thread condition
@@ -612,6 +611,7 @@ class FirConverter {
 
   void genFIRCondBranch(
       M::Value *cond, AST::Evaluation *trueDest, AST::Evaluation *falseDest) {
+    using namespace std::placeholders;
     localEdgeQ.emplace_back(std::bind(
         [](M::OpBuilder *builder, M::Block *block, M::Value *cnd,
             AST::Evaluation *trueDest, AST::Evaluation *falseDest,
@@ -640,7 +640,8 @@ class FirConverter {
           assert(map.find(dest) != map.end() && "no destination");
           builder->create<M::BranchOp>(location, map.find(dest)->second);
         },
-        builder, builder->getInsertionBlock(), op.target, toLocation(), _1));
+        builder, builder->getInsertionBlock(), findSinkOf(eval), toLocation(),
+        _1));
   }
 
   // Indirect goto control-flow semantics
@@ -958,7 +959,13 @@ class FirConverter {
   // Finalization of the CFG structure
   //
 
-  L::ArrayRef<AST::Evaluation *> findTargetsOf(const Evaluation &eval) {
+  L::ArrayRef<AST::Evaluation *> findTargetsOf(const AST::Evaluation &eval) {
+    // FIXME
+    return {};
+  }
+
+  /// Lookup the sink for this source. There must be exactly one.
+  AST::Evaluation *findSinkOf(const AST::Evaluation &eval) {
     // FIXME
     return {};
   }
@@ -1032,6 +1039,8 @@ private:
   std::list<Closure> localEdgeQ;
   LabelMapType localBlockMap;
   Pa::CharBlock currentPosition;
+  L::DenseMap<AST::Evaluation*,L::SmallVector<AST::Evaluation*,2>*> cfgMap;
+  std::list<L::SmallVector<AST::Evaluation*,2>> cfgEdgeSetPool;
 
 public:
   FirConverter() = delete;
