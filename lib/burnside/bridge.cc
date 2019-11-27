@@ -959,15 +959,34 @@ class FirConverter {
   // Finalization of the CFG structure
   //
 
-  L::ArrayRef<AST::Evaluation *> findTargetsOf(const AST::Evaluation &eval) {
-    // FIXME
-    return {};
+  /// Lookup the set of sinks for this source.
+  L::ArrayRef<AST::Evaluation *> findTargetsOf(AST::Evaluation &eval) {
+    auto iter = cfgMap.find(&eval);
+    assert(iter != cfgMap.end());
+    return *iter->second;
   }
 
   /// Lookup the sink for this source. There must be exactly one.
-  AST::Evaluation *findSinkOf(const AST::Evaluation &eval) {
-    // FIXME
-    return {};
+  AST::Evaluation *findSinkOf(AST::Evaluation &eval) {
+    auto iter = cfgMap.find(&eval);
+    assert((iter != cfgMap.end()) && (iter->second->size() == 1));
+    return iter->second->front();
+  }
+
+  void addSourceToSink(AST::Evaluation *src, AST::Evaluation *snk) {
+    auto iter = cfgMap.find(src);
+    if (iter == cfgMap.end()) {
+      CFGSinkListType sink{snk};
+      cfgEdgeSetPool.emplace_back(std::move(sink));
+      auto rc{cfgMap.try_emplace(src, &cfgEdgeSetPool.back())};
+      assert(rc.second && "insert failed");
+      return;
+    }
+    for (auto *s : *iter->second)
+      if (s == snk) {
+        return;
+      }
+    iter->second->push_back(snk);
   }
 
   /// prune the CFG for `f`
@@ -996,6 +1015,7 @@ class FirConverter {
 
   M::Location toLocation() { return toLocation(currentPosition); }
 
+  // TODO: should these be moved to convert-expr?
   template<M::CmpIPredicate ICMPOPC>
   M::Value *genCompare(M::Value *lhs, M::Value *rhs) {
     auto lty{lhs->getType()};
@@ -1013,7 +1033,6 @@ class FirConverter {
     assert(false && "cannot generate operation on this type");
     return {};
   }
-
   M::Value *genGE(M::Value *lhs, M::Value *rhs) {
     return genCompare<M::CmpIPredicate::sge>(lhs, rhs);
   }
@@ -1028,6 +1047,9 @@ class FirConverter {
   }
 
 private:
+  using CFGSinkListType = L::SmallVector<AST::Evaluation *, 2>;
+  using CFGMapType = L::DenseMap<AST::Evaluation *, CFGSinkListType *>;
+
   M::MLIRContext &mlirContext;
   const Pa::CookedSource *cooked;
   M::ModuleOp &module;
@@ -1039,8 +1061,8 @@ private:
   std::list<Closure> localEdgeQ;
   LabelMapType localBlockMap;
   Pa::CharBlock currentPosition;
-  L::DenseMap<AST::Evaluation*,L::SmallVector<AST::Evaluation*,2>*> cfgMap;
-  std::list<L::SmallVector<AST::Evaluation*,2>> cfgEdgeSetPool;
+  CFGMapType cfgMap;
+  std::list<CFGSinkListType> cfgEdgeSetPool;
 
 public:
   FirConverter() = delete;
