@@ -85,9 +85,11 @@ struct Evaluation {
       const parser::ForallConstruct *, const parser::CompilerDirective *,
       const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *,
       // construct statements
-      const parser::EndAssociateStmt *, const parser::EndBlockStmt *,
+      const parser::AssociateStmt *, const parser::EndAssociateStmt *,
+      const parser::BlockStmt *, const parser::EndBlockStmt *,
       const parser::SelectCaseStmt *, const parser::CaseStmt *,
-      const parser::EndSelectStmt *, const parser::EndChangeTeamStmt *,
+      const parser::EndSelectStmt *, const parser::ChangeTeamStmt *,
+      const parser::EndChangeTeamStmt *, const parser::CriticalStmt *,
       const parser::EndCriticalStmt *, const parser::NonLabelDoStmt *,
       const parser::EndDoStmt *, const parser::IfThenStmt *,
       const parser::ElseIfStmt *, const parser::ElseStmt *,

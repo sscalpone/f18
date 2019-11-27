@@ -730,20 +730,24 @@ class FirConverter {
   void genFIR(const Pa::CompilerDirective &) { TODO(); }
   void genFIR(const Pa::OpenMPConstruct &) { TODO(); }
   void genFIR(const Pa::OmpEndLoopDirective &) { TODO(); }
-  
+
+  void genFIR(const parser::AssociateStmt &) { TODO(); }
   void genFIR(const parser::EndAssociateStmt &) { TODO(); }
+  void genFIR(const parser::BlockStmt &) { TODO(); }
   void genFIR(const parser::EndBlockStmt &) { TODO(); }
   void genFIR(const parser::SelectCaseStmt &) { TODO(); }
   void genFIR(const parser::CaseStmt &) { TODO(); }
   void genFIR(const parser::EndSelectStmt &) { TODO(); }
+  void genFIR(const parser::ChangeTeamStmt &) { TODO(); }
   void genFIR(const parser::EndChangeTeamStmt &) { TODO(); }
+  void genFIR(const parser::CriticalStmt &) { TODO(); }
   void genFIR(const parser::EndCriticalStmt &) { TODO(); }
   void genFIR(const parser::NonLabelDoStmt &) { TODO(); }
   void genFIR(const parser::EndDoStmt &) { TODO(); }
   void genFIR(const parser::IfThenStmt &) { TODO(); }
   void genFIR(const parser::ElseIfStmt &) { TODO(); }
   void genFIR(const parser::ElseStmt &) { TODO(); }
-  void genFIR(const parser::EndIfStmt &) { TODO(); }  
+  void genFIR(const parser::EndIfStmt &) { TODO(); }
   void genFIR(const parser::SelectRankStmt &) { TODO(); }
   void genFIR(const parser::SelectRankCaseStmt &) { TODO(); }
   void genFIR(const parser::SelectTypeStmt &) { TODO(); }

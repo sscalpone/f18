@@ -81,6 +81,9 @@ public:
   void Post(const Pa::Statement<Pa::ActionStmt> &s) {
     addEval(makeEvalAction(s));
   }
+  void Post(const Pa::UnlabeledStatement<Pa::ActionStmt> &s) {
+    addEval(makeEvalAction(s));
+  }
   void Post(const Pa::Statement<Co::Indirection<Pa::FormatStmt>> &s) {
     addEval(makeEvalIndirect(s));
   }
@@ -92,6 +95,102 @@ public:
   }
   void Post(const Pa::Statement<Co::Indirection<Pa::NamelistStmt>> &s) {
     addEval(makeEvalIndirect(s));
+  }
+
+  void Post(const Pa::Statement<parser::AssociateStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndAssociateStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::BlockStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndBlockStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::SelectCaseStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::CaseStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndSelectStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::ChangeTeamStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndChangeTeamStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::CriticalStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndCriticalStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::NonLabelDoStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndDoStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::IfThenStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::ElseIfStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::ElseStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndIfStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::SelectRankStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::SelectRankCaseStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::SelectTypeStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::TypeGuardStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::WhereConstructStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::MaskedElsewhereStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::ElsewhereStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndWhereStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::ForallConstructStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::Statement<parser::EndForallStmt> &s) {
+    addEval(makeEvalDirect(s));
+  }
+  void Post(const Pa::UnlabeledStatement<parser::ForallAssignmentStmt> &s) {
+    addEval(std::visit(
+        [&](const auto &x) {
+          return AST::Evaluation{x, s.source, {}};
+        },
+        s.statement.u));
+  }
+  void Post(const Pa::Statement<parser::ForallAssignmentStmt> &s) {
+    addEval(std::visit(
+        [&](const auto &x) {
+          return AST::Evaluation{x, s.source, s.label};
+        },
+        s.statement.u));
   }
 
   bool Pre(const Pa::AssociateConstruct &c) { return enterConstruct(c); }
@@ -143,10 +242,30 @@ private:
         },
         s.statement.u);
   }
+  AST::Evaluation makeEvalAction(
+      const Pa::UnlabeledStatement<Pa::ActionStmt> &s) {
+    return std::visit(common::visitors{
+                          [&](const Pa::ContinueStmt &x) {
+                            return AST::Evaluation{x, s.source, {}};
+                          },
+                          [&](const Pa::FailImageStmt &x) {
+                            return AST::Evaluation{x, s.source, {}};
+                          },
+                          [&](const auto &x) {
+                            return AST::Evaluation{x.value(), s.source, {}};
+                          },
+                      },
+        s.statement.u);
+  }
 
   template<typename A>
   AST::Evaluation makeEvalIndirect(const Pa::Statement<Co::Indirection<A>> &s) {
     return AST::Evaluation{s.statement.value(), s.source, s.label};
+  }
+
+  template<typename A>
+  AST::Evaluation makeEvalDirect(const Pa::Statement<A> &s) {
+    return AST::Evaluation{s.statement, s.source, s.label};
   }
 
   // When we enter a function-like structure, we want to build a new unit and
