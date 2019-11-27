@@ -444,12 +444,12 @@ void Br::annotateControl(AST::Program &ast) {
                    [](AST::BlockDataUnit &) {},
                    [](AST::FunctionLikeUnit &f) {
                      annotateFuncCFG(f);
-                     for (auto s : f.funcs) {
+                     for (auto &s : f.funcs) {
                        annotateFuncCFG(s);
                      }
                    },
                    [](AST::ModuleLikeUnit &u) {
-                     for (auto f : u.funcs) {
+                     for (auto &f : u.funcs) {
                        annotateFuncCFG(f);
                      }
                    },

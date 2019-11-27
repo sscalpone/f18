@@ -1010,7 +1010,7 @@ class FirConverter {
 
     // recursively lower internal procedures
     L::Optional<L::StringRef> optName{name};
-    for (auto f : func.funcs) {
+    for (auto &f : func.funcs) {
       lowerFunc(f, modules, optName);
     }
   }
@@ -1020,7 +1020,7 @@ class FirConverter {
     std::vector<L::StringRef> moduleName;
 
     // FIXME: do we need to visit the module statements?
-    for (auto f : mod.funcs) {
+    for (auto &f : mod.funcs) {
       lowerFunc(f, moduleName);
     }
   }
@@ -1029,7 +1029,7 @@ class FirConverter {
   void pruneFunc(AST::FunctionLikeUnit &f) { SOFT_TODO(); }
 
   void pruneMod(AST::ModuleLikeUnit &mod) {
-    for (auto f : mod.funcs) {
+    for (auto &f : mod.funcs) {
       pruneFunc(f);
     }
   }
