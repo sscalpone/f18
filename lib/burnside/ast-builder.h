@@ -78,6 +78,7 @@ struct Evaluation {
       const parser::OpenMPConstruct *, const parser::OmpEndLoopDirective *>;
 
   Evaluation() = delete;
+  Evaluation(const Evaluation &) = default;
 
   /// General ctor
   template<typename A>
@@ -86,7 +87,7 @@ struct Evaluation {
     : u{&a}, pos{pos}, lab{lab} {}
 
   /// Compiler-generated jump
-  Evaluation(const CGJump &jump) : u(jump), cfg{CFGAnnotation::Goto} {}
+  Evaluation(const CGJump &jump) : u{jump}, cfg{CFGAnnotation::Goto} {}
 
   /// Construct ctor
   template<typename A> Evaluation(const A &a) : u{&a} {
@@ -95,25 +96,17 @@ struct Evaluation {
 
   /// is `A` executable (an action statement or compiler generated)?
   template<typename A> constexpr static bool isAction(const A &a) {
-    if constexpr (!isConstruct(a) && !isOther(a)) {
-      return true;
-    } else {
-      return false;
-    }
+    return !isConstruct(a) && !isOther(a);
   }
 
   /// is `A` a compiler-generated evaluation?
   template<typename A> constexpr static bool isGenerated(const A &) {
-    if constexpr (std::is_same_v<A, CGJump>) {
-      return true;
-    } else {
-      return false;
-    }
+    return std::is_same_v<A, CGJump>;
   }
 
   /// is `A` a construct (or directive)?
   template<typename A> constexpr static bool isConstruct(const A &) {
-    if constexpr (std::is_same_v<A, parser::AssociateConstruct> ||
+    return std::is_same_v<A, parser::AssociateConstruct> ||
         std::is_same_v<A, parser::BlockConstruct> ||
         std::is_same_v<A, parser::CaseConstruct> ||
         std::is_same_v<A, parser::ChangeTeamConstruct> ||
@@ -126,23 +119,15 @@ struct Evaluation {
         std::is_same_v<A, parser::ForallConstruct> ||
         std::is_same_v<A, parser::CompilerDirective> ||
         std::is_same_v<A, parser::OpenMPConstruct> ||
-        std::is_same_v<A, parser::OmpEndLoopDirective>) {
-      return true;
-    } else {
-      return false;
-    }
+        std::is_same_v<A, parser::OmpEndLoopDirective>;
   }
 
   /// is `A` not an executable statement?
   template<typename A> constexpr static bool isOther(const A &) {
-    if constexpr (std::is_same_v<A, parser::FormatStmt> ||
+    return std::is_same_v<A, parser::FormatStmt> ||
         std::is_same_v<A, parser::EntryStmt> ||
         std::is_same_v<A, parser::DataStmt> ||
-        std::is_same_v<A, parser::NamelistStmt>) {
-      return true;
-    } else {
-      return false;
-    }
+        std::is_same_v<A, parser::NamelistStmt>;
   }
 
   constexpr bool isActionStmt() const {
@@ -179,7 +164,7 @@ struct Evaluation {
   void setBranches() { containsBranches = true; }
 
   constexpr std::list<Evaluation> *getConstructEvals() {
-    return isStmt() ? nullptr : &subs;
+    return isStmt() ? nullptr : subs;
   }
 
   /// Set that the construct `cstr` (if not a nullptr) has branches.
@@ -192,7 +177,7 @@ struct Evaluation {
   EvalVariant u;
   parser::CharBlock pos;
   std::optional<parser::Label> lab;
-  std::list<Evaluation> subs;
+  std::list<Evaluation> *subs{nullptr};  // construct sub-statements
   CFGAnnotation cfg{CFGAnnotation::None};
   bool isTarget{false};  // this evaluation is a control target
   bool containsBranches{false};  // construct contains branches
@@ -229,10 +214,10 @@ struct FunctionLikeUnit : public ProgramUnit {
   FunctionLikeUnit(const parser::SubroutineSubprogram &f);
   FunctionLikeUnit(const parser::SeparateModuleSubprogram &f);
 
-  const semantics::Scope *scope{nullptr};
-  std::list<FunctionStatement> funStmts;
-  std::list<Evaluation> evals;
-  std::list<FunctionLikeUnit> funcs;
+  const semantics::Scope *scope{nullptr};  // scope from front-end
+  std::list<FunctionStatement> funStmts;  // begin/end pair
+  std::list<Evaluation> evals;  // statements
+  std::list<FunctionLikeUnit> funcs;  // internal procedures
 };
 
 /// Module-like units have similar structure. They all can contain a list of
@@ -261,6 +246,10 @@ struct BlockDataUnit : public ProgramUnit {
 /// A Program is the top-level AST
 struct Program {
   using Units = std::variant<FunctionLikeUnit, ModuleLikeUnit, BlockDataUnit>;
+
+  std::list<Units> &getUnits() { return units; }
+
+private:
   std::list<Units> units;
 };
 
@@ -270,6 +259,9 @@ struct Program {
 AST::Program createAST(const parser::Program &root);
 
 /// Decorate the AST with control flow annotations
+///
+/// The AST must be decorated with control-flow annotations to prepare it for
+/// use in generating a CFG-like structure.
 void annotateControl(AST::Program &ast);
 
 }  // namespace burnside

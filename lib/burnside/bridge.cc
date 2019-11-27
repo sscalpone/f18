@@ -36,6 +36,10 @@
 #undef TODO
 #define TODO() assert(false && "not yet implemented")
 
+#undef SOFT_TODO
+#define SOFT_TODO() \
+  llvm::errs() << __FILE__ << ":" << __LINE__ << " not implemented\n";
+
 namespace Br = Fortran::burnside;
 namespace Co = Fortran::common;
 namespace Ev = Fortran::evaluate;
@@ -630,67 +634,142 @@ class FirConverter {
   using LabelMapType = std::map<AST::Evaluation *, M::Block *>;
   using Closure = std::function<void(const LabelMapType &)>;
 
+  void setCurrentPosition(const Pa::CharBlock &pos) {
+    if (pos != Pa::CharBlock{}) {
+      currentPosition = pos;
+    }
+  }
+
+  /// Convert a parser CharBlock to a Location
+  M::Location toLocation(const Pa::CharBlock &cb) {
+    return parserPosToLoc(mlirContext, cooked, cb);
+  }
+
+  M::Location toLocation() { return toLocation(currentPosition); }
+
   //
   // Function-like AST entry and exit statements
+  //
 
-  void genFIR(const Pa::Statement<Pa::ProgramStmt> &, std::string &name,
+  void genFIR(const Pa::Statement<Pa::ProgramStmt> &stmt, std::string &name,
       Se::Symbol const *&) {
+    setCurrentPosition(stmt.source);
     name = mangler.getProgramEntry();
   }
-  void genFIR(const Pa::Statement<Pa::EndProgramStmt> &, std::string &,
+  void genFIR(const Pa::Statement<Pa::EndProgramStmt> &stmt, std::string &,
       Se::Symbol const *&) {
-    TODO();
+    setCurrentPosition(stmt.source);
+    genFIR(stmt.statement);
   }
-  void genFIR(const Pa::Statement<Pa::FunctionStmt> &, std::string &,
+  void genFIR(const Pa::Statement<Pa::FunctionStmt> &stmt, std::string &name,
+      Se::Symbol const *&symbol) {
+    setCurrentPosition(stmt.source);
+    auto &n{std::get<Pa::Name>(stmt.statement.t)};
+    name = n.ToString();
+    symbol = n.symbol;
+  }
+  void genFIR(const Pa::Statement<Pa::EndFunctionStmt> &stmt, std::string &,
       Se::Symbol const *&) {
-    TODO();
+    setCurrentPosition(stmt.source);
+    genFIR(stmt.statement);
   }
-  void genFIR(const Pa::Statement<Pa::EndFunctionStmt> &, std::string &,
+  void genFIR(const Pa::Statement<Pa::SubroutineStmt> &stmt, std::string &name,
+      Se::Symbol const *&symbol) {
+    setCurrentPosition(stmt.source);
+    auto &n{std::get<Pa::Name>(stmt.statement.t)};
+    name = n.ToString();
+    symbol = n.symbol;
+  }
+  void genFIR(const Pa::Statement<Pa::EndSubroutineStmt> &stmt, std::string &,
       Se::Symbol const *&) {
-    TODO();
+    setCurrentPosition(stmt.source);
+    genFIR(stmt.statement);
   }
-  void genFIR(const Pa::Statement<Pa::SubroutineStmt> &, std::string &,
+  void genFIR(const Pa::Statement<Pa::MpSubprogramStmt> &stmt,
+      std::string &name, Se::Symbol const *&symbol) {
+    setCurrentPosition(stmt.source);
+    auto &n{stmt.statement.v};
+    name = n.ToString();
+    symbol = n.symbol;
+  }
+  void genFIR(const Pa::Statement<Pa::EndMpSubprogramStmt> &stmt, std::string &,
       Se::Symbol const *&) {
-    TODO();
+    setCurrentPosition(stmt.source);
+    genFIR(stmt.statement);
   }
-  void genFIR(const Pa::Statement<Pa::EndSubroutineStmt> &, std::string &,
-      Se::Symbol const *&) {
-    TODO();
-  }
-  void genFIR(const Pa::Statement<Pa::MpSubprogramStmt> &, std::string &,
-      Se::Symbol const *&) {
-    TODO();
-  }
-  void genFIR(const Pa::Statement<Pa::EndMpSubprogramStmt> &, std::string &,
-      Se::Symbol const *&) {
-    TODO();
-  }
+
+  //
+  // Termination of symbolically referenced execution units
+  //
+
+  /// END of program
+  ///
+  /// Generate the cleanup block before the program exits
+  void genFIRProgramExit() { SOFT_TODO(); }
+  void genFIR(const Pa::EndProgramStmt &) { genFIRProgramExit(); }
+
+  /// END of procedure-like constructs
+  ///
+  /// Generate the cleanup block before the procedure exits
+  void genFIRProcedureExit() { SOFT_TODO(); }
+  void genFIR(const Pa::EndFunctionStmt &) { genFIRProcedureExit(); }
+  void genFIR(const Pa::EndSubroutineStmt &) { genFIRProcedureExit(); }
+  void genFIR(const Pa::EndMpSubprogramStmt &) { genFIRProcedureExit(); }
 
   //
   // Statements that have control-flow semantics
+  //
 
-  void genFIR(const Pa::BackspaceStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::CallStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::CloseStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::CycleStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::EndfileStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::ExitStmt &, AST::Evaluation &) { TODO(); }
+  // IO statements that have control-flow semantics
+  //
+  // First lower the IO statement and then do the switch op
+  void genFIRIOSwitch(AST::Evaluation &) { TODO(); }
+  void genFIR(const Pa::BackspaceStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::CloseStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::EndfileStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::FlushStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::InquireStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::OpenStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::ReadStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::RewindStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+  void genFIR(const Pa::WriteStmt &stmt, AST::Evaluation &eval) {
+    genFIR(stmt);
+    genFIRIOSwitch(eval);
+  }
+
+  // Return and program-exit like semantics
   void genFIR(const Pa::FailImageStmt &stmt, AST::Evaluation &) {
 #if 0
     auto callee{genRuntimeFunction(FIRT_FAIL_IMAGE, 0)};
     L::SmallVector<M::Value *, 1> operands;  // FAIL IMAGE has no args
     build().create<M::CallOp>(toLocation(), callee, operands);
-    build().create<fir::UnreachableOp>(toLocation());
 #endif
+    builder->create<fir::UnreachableOp>(toLocation());
   }
-  void genFIR(const Pa::FlushStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::GotoStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::IfStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::InquireStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::OpenStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::ReadStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::ReturnStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::RewindStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::StopStmt &stm, AST::Evaluation &) {
 #if 0
     auto callee{
@@ -702,13 +781,20 @@ class FirConverter {
     build().create<fir::UnreachableOp>(toLocation());
 #endif
   }
+  void genFIR(const Pa::ReturnStmt &, AST::Evaluation &) { TODO(); }
+
+  void genFIR(const Pa::CallStmt &, AST::Evaluation &) { TODO(); }
+  void genFIR(const Pa::CycleStmt &, AST::Evaluation &) { TODO(); }
+  void genFIR(const Pa::ExitStmt &, AST::Evaluation &) { TODO(); }
+  void genFIR(const Pa::GotoStmt &, AST::Evaluation &) { TODO(); }
+  void genFIR(const Pa::IfStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::WaitStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::WhereStmt &, AST::Evaluation &) { TODO(); }
-  void genFIR(const Pa::WriteStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::ComputedGotoStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::ForallStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::ArithmeticIfStmt &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::AssignedGotoStmt &, AST::Evaluation &) { TODO(); }
+
   void genFIR(const Pa::AssociateConstruct &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::BlockConstruct &, AST::Evaluation &) { TODO(); }
   void genFIR(const Pa::CaseConstruct &, AST::Evaluation &) { TODO(); }
@@ -745,6 +831,7 @@ class FirConverter {
 
   //
   // Statements that do not have control-flow semantics
+  //
 
   void genFIR(const Pa::AllocateStmt &) { TODO(); }
   void genFIR(const Pa::AssignmentStmt &stmt) {
@@ -816,6 +903,7 @@ class FirConverter {
   }
 
   void lowerEval(AST::Evaluation &eval) {
+    setCurrentPosition(eval.pos);
     if (eval.isControlTarget()) {
       // start a new block
     }
@@ -912,7 +1000,7 @@ class FirConverter {
     startNewFunction(name, symbol);
 
     // lower this procedure
-    for (auto e : func.evals) {
+    for (auto &e : func.evals) {
       lowerEval(e);
     }
     std::visit(
@@ -938,9 +1026,7 @@ class FirConverter {
   }
 
   /// prune the CFG for `f`
-  void pruneFunc(AST::FunctionLikeUnit &f) {
-    TODO();
-  }
+  void pruneFunc(AST::FunctionLikeUnit &f) { SOFT_TODO(); }
 
   void pruneMod(AST::ModuleLikeUnit &mod) {
     for (auto f : mod.funcs) {
@@ -959,6 +1045,7 @@ private:
   SymMap localSymbols;
   std::list<Closure> localEdgeQ;
   LabelMapType localBlockMap;
+  Pa::CharBlock currentPosition;
 
 public:
   FirConverter() = delete;
@@ -975,7 +1062,7 @@ public:
   /// Convert the AST to FIR
   void run(AST::Program &ast) {
     // build pruned control
-    for (auto u : ast.units) {
+    for (auto &u : ast.getUnits()) {
       std::visit(common::visitors{
                      [&](AST::FunctionLikeUnit &f) { pruneFunc(f); },
                      [&](AST::ModuleLikeUnit &m) { pruneMod(m); },
@@ -985,7 +1072,7 @@ public:
     }
 
     // do translation
-    for (auto u : ast.units) {
+    for (auto &u : ast.getUnits()) {
       std::visit(common::visitors{
                      [&](AST::FunctionLikeUnit &f) { lowerFunc(f, {}); },
                      [&](AST::ModuleLikeUnit &m) { lowerMod(m); },

@@ -152,24 +152,23 @@ private:
   // When we enter a function-like structure, we want to build a new unit and
   // set the builder's cursors to point to it.
   template<typename A> bool enterFunc(const A &f) {
-    AST::FunctionLikeUnit unit{f};
+    auto &unit = addFunc(AST::FunctionLikeUnit{f});
     funclist = &unit.funcs;
     pushEval(&unit.evals);
-    addFunc(unit);
     return true;
   }
 
   void exitFunc() {
-    funclist = nullptr;
     popEval();
+    funclist = nullptr;
   }
 
   // When we enter a construct structure, we want to build a new construct and
   // set the builder's evaluation cursor to point to it.
   template<typename A> bool enterConstruct(const A &c) {
-    AST::Evaluation con{c};
-    addEval(con);
-    pushEval(con.getConstructEvals());
+    auto &con = addEval(AST::Evaluation{c});
+    con.subs = new std::list<AST::Evaluation>();
+    pushEval(con.subs);
     return true;
   }
 
@@ -178,37 +177,44 @@ private:
   // When we enter a module structure, we want to build a new module and
   // set the builder's function cursor to point to it.
   template<typename A> bool enterModule(const A &f) {
-    AST::ModuleLikeUnit unit{f};
+    auto &unit = addUnit(AST::ModuleLikeUnit{f});
     funclist = &unit.funcs;
-    addUnit(unit);
     return true;
   }
 
   void exitModule() { funclist = nullptr; }
 
-  template<typename A> void addUnit(const A &unit) {
-    pgm.units.emplace_back(unit);
+  template<typename A> A &addUnit(const A &unit) {
+    pgm.getUnits().emplace_back(unit);
+    return std::get<A>(pgm.getUnits().back());
   }
 
-  template<typename A> void addFunc(const A &func) {
-    if (funclist)
+  template<typename A> A &addFunc(const A &func) {
+    if (funclist) {
       funclist->emplace_back(func);
-    else
-      addUnit(func);
+      return funclist->back();
+    }
+    return addUnit(func);
   }
 
-  void addEval(const AST::Evaluation &eval) {
-    assert(funclist);
-    evallist.back()->emplace_back(eval);
+  /// move the Evaluation to the end of the current list
+  AST::Evaluation &addEval(AST::Evaluation &&eval) {
+    assert(funclist && "not in a function");
+    assert(evallist.size() > 0);
+    evallist.back()->emplace_back(std::move(eval));
+    return evallist.back()->back();
   }
 
+  /// push a new list on the stack of Evaluation lists
   void pushEval(std::list<AST::Evaluation> *eval) {
-    assert(funclist);
-    evallist.push_back(eval);
+    assert(funclist && "not in a function");
+    assert(eval && eval->empty() && "evaluation list isn't correct");
+    evallist.emplace_back(eval);
   }
 
+  /// pop the current list and return to the last Evaluation list
   void popEval() {
-    assert(funclist);
+    assert(funclist && "not in a function");
     evallist.pop_back();
   }
 
@@ -315,7 +321,7 @@ void ioLabel(AST::Evaluation &e, const A *s, AST::Evaluation *cstr) {
 void annotateEvalListCFG(
     std::list<AST::Evaluation> &evals, AST::Evaluation *cstr) {
   bool nextIsTarget = false;
-  for (auto e : evals) {
+  for (auto &e : evals) {
     e.isTarget = nextIsTarget;
     nextIsTarget = false;
     if (e.isConstruct()) {
@@ -326,39 +332,49 @@ void annotateEvalListCFG(
     }
     std::visit(
         common::visitors{
-            [&](Pa::BackspaceStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::CallStmt *s) { altRet(e, s, cstr); },
-            [&](Pa::CloseStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::CycleStmt *) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
-            [&](Pa::EndfileStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::ExitStmt *) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
-            [&](Pa::FailImageStmt *) {
+            [&](const Pa::BackspaceStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::CallStmt *s) { altRet(e, s, cstr); },
+            [&](const Pa::CloseStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::CycleStmt *) {
+              e.setCFG(AST::CFGAnnotation::Goto, cstr);
+            },
+            [&](const Pa::EndfileStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::ExitStmt *) {
+              e.setCFG(AST::CFGAnnotation::Goto, cstr);
+            },
+            [&](const Pa::FailImageStmt *) {
               e.setCFG(AST::CFGAnnotation::Return, cstr);
             },
-            [&](Pa::FlushStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::GotoStmt *) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
-            [&](Pa::IfStmt *) { e.setCFG(AST::CFGAnnotation::CondGoto, cstr); },
-            [&](Pa::InquireStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::OpenStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::ReadStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::ReturnStmt *) {
+            [&](const Pa::FlushStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::GotoStmt *) {
+              e.setCFG(AST::CFGAnnotation::Goto, cstr);
+            },
+            [&](const Pa::IfStmt *) {
+              e.setCFG(AST::CFGAnnotation::CondGoto, cstr);
+            },
+            [&](const Pa::InquireStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::OpenStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::ReadStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::ReturnStmt *) {
               e.setCFG(AST::CFGAnnotation::Return, cstr);
             },
-            [&](Pa::RewindStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::StopStmt *) { e.setCFG(AST::CFGAnnotation::Return, cstr); },
-            [&](Pa::WaitStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::WriteStmt *s) { ioLabel(e, s, cstr); },
-            [&](Pa::ArithmeticIfStmt *) {
+            [&](const Pa::RewindStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::StopStmt *) {
+              e.setCFG(AST::CFGAnnotation::Return, cstr);
+            },
+            [&](const Pa::WaitStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::WriteStmt *s) { ioLabel(e, s, cstr); },
+            [&](const Pa::ArithmeticIfStmt *) {
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
-            [&](Pa::AssignedGotoStmt *) {
+            [&](const Pa::AssignedGotoStmt *) {
               e.setCFG(AST::CFGAnnotation::IndGoto, cstr);
             },
-            [&](Pa::ComputedGotoStmt *) {
+            [&](const Pa::ComputedGotoStmt *) {
               e.setCFG(AST::CFGAnnotation::Switch, cstr);
             },
             [&](AST::CGJump &) { e.setCFG(AST::CFGAnnotation::Goto, cstr); },
-            [](auto *) { /* do nothing */ },
+            [](const auto *) { /* do nothing */ },
         },
         e.u);
     if (e.isActionStmt() && e.lab.has_value()) {
@@ -423,7 +439,7 @@ AST::Program Br::createAST(const Pa::Program &root) {
 }
 
 void Br::annotateControl(AST::Program &ast) {
-  for (auto unit : ast.units) {
+  for (auto &unit : ast.getUnits()) {
     std::visit(common::visitors{
                    [](AST::BlockDataUnit &) {},
                    [](AST::FunctionLikeUnit &f) {
