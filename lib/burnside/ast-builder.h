@@ -114,7 +114,10 @@ struct Evaluation {
 
   /// Construct ctor
   template<typename A> Evaluation(const A &a) : u{&a} {
+#if defined(__GNUC__) && (__GNUC__ >= 8)
+    // clang++ incorrectly complains that isConstruct is not returning a bool
     static_assert(isConstruct(a) && "must be a construct");
+#endif
   }
 
   /// is `A` executable (an action statement or compiler generated)?
